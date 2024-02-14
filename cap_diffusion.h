@@ -185,9 +185,10 @@ void vertical_diffusion_NeumanNavier (Point point, scalar h, scalar s, double dt
   $$
   */
 
-  a[nl-1] = - 2.*D*dt/(h[0,0,nl-2] + h[0,0,nl-1]);
+  a[nl-1] = - 2.*D*dt/(h[0,0,nl-1]);
   b[nl-1] = h[0,0,nl-1] - a[nl-1];
   rhs[nl-1] += D*dt*dst;
+  //fprintf(stderr,"%g\n",lambda_b);
 
   /**
   For the bottom layer a third-order discretisation of the Navier slip
@@ -249,6 +250,17 @@ time discretisation is explicit so that the timestep must be limited
 void horizontal_diffusion (scalar s, double D, double dt, scalar dst)
 {
   if (D > 0.) {
+    scalar d2s[];
+    foreach_layer() {
+      foreach() {
+	double a = 0.;
+	foreach_dimension(){
+	  a += (s[-1] -2.*s[] + s[1]);
+	}
+	d2s[] = a/(sq(Delta));
+      }
+    }
+  
     
     scalar zl[];
     foreach()
@@ -259,42 +271,35 @@ void horizontal_diffusion (scalar s, double D, double dt, scalar dst)
 	double b = 0;
 	foreach_dimension(){
 	  if (l<nl-1){
-	    b += 2.*((h[1,0,l]*(s[1,0,l]-s[1,0,l+1])-h[0,0,l]*(s[0,0,l]-s[0,0,l+1]))*hf.x[1,0,l]*fm.x[1,0,l]/(cm[1,0,l] + cm[0,0,l])
-		     -(h[0,0,l]*(s[0,0,l]-s[0,0,l+1])-h[-1,0,l]*(s[-1,0,l]-s[-1,0,l+1]))*hf.x[0,0,l]*fm.x[0,0,l]/(cm[0,0,l] + cm[-1,0,l])
-		     -h[0,0,l]*(((s[1,0,l]+s[1,0,l+1])-(s[0,0,l]+s[0,0,l+1]))*hf.x[1,0,l]*fm.x[1,0,l]/(cm[1,0,l] + cm[0,0,l])
-				-((s[0,0,l]+s[0,0,l+1])-(s[-1,0,l]+s[-1,0,l+1]))*hf.x[0,0,l]*fm.x[0,0,l]/(cm[0,0,l] + cm[-1,0,l])))/(hf.x[1,0,l]+hf.x[0,0,l]); 
+	    b += (s[1,0,l]-s[-1,0,l]-s[1,0,l+1]+s[-1,0,l+1])*(h[1,0,l]-h[-1,0,l])/4.;
+	    b += (s[0,0,l]-s[0,0,l+1])*(h[1,0,l]-2.*h[0,0,l]+h[-1,0,l])/2.;
+	    if(l>0){
+	      b -= (s[1,0,l+1]-s[-1,0,l+1]-s[1,0,l-1]+s[-1,0,l-1])*(zl[1,0]-zl[-1,0])/4.;
+	      b -= (s[0,0,l+1]-s[0,0,l-1])*(zl[1,0]-2.*zl[0,0]+zl[-1,0])/2.;
+	    }
 	  }
 	  else{
-	    b += 2.*((h[1,0,l]*(-dst[1,0]*h[1,0,l])-h[0,0,l]*(-dst[0,0]*h[0,0,l]))*hf.x[1,0,l]*fm.x[1,0,l]/(cm[1,0,l] + cm[0,0,l])
-		     -(h[0,0,l]*(-dst[0,0]*h[0,0,l])-h[-1,0,l]*(-dst[-1,0]*h[-1,0,l]))*hf.x[0,0,l]*fm.x[0,0,l]/(cm[0,0,l] + cm[-1,0,l])
-		     -h[0,0,l]*(((2.*s[1,0,l]+dst[1,0]*h[1,0,l])-(2.*s[0,0,l]+dst[0,0]*h[0,0,l]))*hf.x[1,0,l]*fm.x[1,0,l]/(cm[1,0,l] + cm[0,0,l])
-				-((2.*s[0,0,l]+dst[0,0]*h[0,0,l])-(2.*s[-1,0,l]+dst[-1,0]*h[-1,0,l]))*hf.x[0,0,l]*fm.x[0,0,l]/(cm[0,0,l] + cm[-1,0,l])))/(hf.x[1,0,l]+hf.x[0,0,l]); 
-	  } 
-	  if(l>0){
-	    if (l<nl-1){
-	      b += 2.*(-(zl[1,0]*(s[1,0,l+1]-s[1,0,l-1])-zl[0,0]*(s[0,0,l+1]-s[0,0,l-1]))*hf.x[1,0,l]*fm.x[1,0,l]/(cm[1,0,l] + cm[0,0,l])
-		       +(zl[0,0]*(s[0,0,l+1]-s[0,0,l-1])-zl[-1,0]*(s[-1,0,l+1]-s[-1,0,l-1]))*hf.x[0,0,l]*fm.x[0,0,l]/(cm[0,0,l] + cm[-1,0,l])
-		       -zl[0,0,l]*(((s[1,0,l+1]-s[1,0,l-1])-(s[0,0,l+1]-s[0,0,l-1]))*hf.x[1,0,l]*fm.x[1,0,l]/(cm[1,0,l] + cm[0,0,l])
-				   -((s[0,0,l+1]-s[0,0,l-1])-(s[-1,0,l+1]-s[-1,0,l-1]))*hf.x[0,0,l]*fm.x[0,0,l]/(cm[0,0,l] + cm[-1,0,l])))/(hf.x[1,0,l]+hf.x[0,0,l]); 
-	    }
-	    else{
-	      b += 2.*(-(zl[1,0]*(s[1,0,l]+dst[1,0]*h[1,0,l]-s[1,0,l-1])-zl[0,0]*(s[0,0,l]+dst[0,0]*h[0,0,l]-s[0,0,l-1]))*hf.x[1,0,l]*fm.x[1,0,l]/(cm[1,0,l] + cm[0,0,l])
-		       +(zl[0,0]*(s[0,0,l]+dst[0,0]*h[0,0,l]-s[0,0,l-1])-zl[-1,0]*(s[-1,0,l]+dst[-1,0]*h[-1,0,l]-s[-1,0,l-1]))*hf.x[0,0,l]*fm.x[0,0,l]/(cm[0,0,l] + cm[-1,0,l])
-		       -zl[0,0,l]*(((s[1,0,l]+dst[1,0]*h[1,0,l]-s[1,0,l-1])-(s[0,0,l]+dst[0,0]*h[0,0,l]-s[0,0,l-1]))*hf.x[1,0,l]*fm.x[1,0,l]/(cm[1,0,l] + cm[0,0,l])
-				   -((s[0,0,l]+dst[0,0]*h[0,0,l]-s[0,0,l-1])-(s[-1,0,l]+dst[-1,0]*h[-1,0,l]-s[-1,0,l-1]))*hf.x[0,0,l]*fm.x[0,0,l]/(cm[0,0,l] + cm[-1,0,l])))/(hf.x[1,0,l]+hf.x[0,0,l]); 
+	    b += (-dst[1,0]*h[1,0,l]+dst[-1,0]*h[-1,0,l])*(h[1,0,l]-h[-1,0,l])/4.;
+	    b += (-dst[]*h[0,0,l])*(h[1,0,l]-2.*h[0,0,l]+h[-1,0,l])/2.;
+	    if(l>0){
+	      b -= (s[1,0,l]+dst[1,0]*h[1,0,l]-s[-1,0,l]-dst[-1,0]*h[-1,0,l]-s[1,0,l-1]+s[-1,0,l-1])*(zl[1,0]-zl[-1,0])/4.;
+	      b -= (s[0,0,l]+dst[1,0]*h[1,0,l]-s[0,0,l-1])*(zl[1,0]-2.*zl[0,0]+zl[-1,0])/2.;
 	    }
 	  }
-	  
 	}
-	d2sz[0,0,l]= b/(sq(Delta));
+	d2sz[0,0,l]= b/sq(Delta);
       }
       foreach()
 	zl[]+=h[0,0,l];
     } 
+    foreach_layer() 
+      foreach()
+	if (h[] > dry) 
+	    s[] += dt*D*d2s[];
     for (int l = 0; l < nl; l++) 
       foreach()
 	if (h[0,0,l] > dry)
-	  s[0,0,l]-= dt*D*d2sz[0,0,l]/h[0,0,l];
+	  s[0,0,l] += dt*D*d2sz[0,0,l]/h[0,0,l];
   }
 }
 
@@ -389,10 +394,10 @@ event viscous_term (i++,last)
 	foreach_dimension()
 	  u.x[] += dt*(ha.x[] + ha.x[1])/(hf.x[] + hf.x[1] + dry);
       foreach_dimension()
-	vertical_diffusion_NeumanNeuman (point, h, u.x, dt, nu,
-			    dut.x[], dub.x[]);
-	//vertical_diffusion_NeumanNavier (point, h, u.x, dt, nu,
-        //				 dut.x[], u_b.x[], dub.x[]);
+	//vertical_diffusion_NeumanNeuman (point, h, u.x, dt, nu,
+      	//	    dut.x[], dub.x[]);
+	vertical_diffusion_NeumanNavier (point, h, u.x, dt, nu,
+        				 dut.x[], u_b.x[], dub.x[]);
     }
     if (h_diffusion){
       vector dup[];
