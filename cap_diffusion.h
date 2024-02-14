@@ -185,7 +185,7 @@ void vertical_diffusion_NeumanNavier (Point point, scalar h, scalar s, double dt
   $$
   */
 
-  a[nl-1] = - 2.*D*dt/(h[0,0,nl-1]);
+  a[nl-1] = - 2.*D*dt/(h[0,0,nl-2] + h[0,0,nl-1]);
   b[nl-1] = h[0,0,nl-1] - a[nl-1];
   rhs[nl-1] += D*dt*dst;
   //fprintf(stderr,"%g\n",lambda_b);
