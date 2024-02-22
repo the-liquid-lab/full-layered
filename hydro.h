@@ -180,16 +180,20 @@ times gravity. */
 
 #define gmetric(i) (2.*fm.x[i]/(cm[i] + cm[i-1]))
 #ifndef a_baro
-# define a_baro(eta, i) (G*gmetric(i)*(eta[i-1] - eta[i])/Delta+ a_cap(eta,i))
+# define a_baro(eta, i) (G*gmetric(i)*(eta[i-1] - eta[i])/Delta)
 #endif
 
 #ifndef a_cap
 # define a_cap(eta, i) (0)
 #endif
 
+#ifndef a_VdW
+# define a_VdW(eta, i) (0)
+#endif
+
 #ifndef a_tot
 //#define a_tot(eta,i) (a_baro(eta,i))
-#define a_tot(eta,i) (a_baro(eta,i) )
+#define a_tot(eta,i) (a_baro(eta,i) + a_cap(eta,i) + a_VdW(eta,i))
 #endif
 
 /**

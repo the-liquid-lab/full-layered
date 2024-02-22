@@ -234,6 +234,110 @@ void vertical_diffusion_NeumanNavier (Point point, scalar h, scalar s, double dt
 }
 
 
+void vertical_diffusion_NavierNavier (Point point, scalar h, scalar s, double dt, double D,
+				        double s_t, double lambda_t, double s_b, double lambda_b)
+{
+  double a[nl], b[nl], c[nl], rhs[nl];
+
+  /**
+  The *rhs* of the tridiagonal system is $h_l s_l$. */
+      
+  foreach_layer()
+    rhs[_layer] = s[]*h[];
+
+  /**
+  The lower, principal and upper diagonals $a$, $b$ and $c$ are given by
+  $$
+  a_{l > 0} = - \left( \frac{D \Delta t}{h_{l - 1 / 2}} \right)^{n + 1}
+  $$
+  $$
+  c_{l < \mathrm{nl} - 1} = - \left( \frac{D \Delta t}{h_{l + 1 / 2}}
+  \right)^{n + 1}
+  $$
+  $$
+  b_{0 < l < \mathrm{nl} - 1} = h_l^{n + 1} - a_l - c_l
+  $$
+  */
+
+  for (int l = 1; l < nl - 1; l++) {
+    a[l] = - 2.*D*dt/(h[0,0,l-1] + h[0,0,l]);
+    c[l] = - 2.*D*dt/(h[0,0,l] + h[0,0,l+1]);
+    b[l] = h[0,0,l] - a[l] - c[l];
+  }
+    
+  /**
+  For the top layer the boundary conditions give the (ghost)
+  boundary value
+  $$
+  s_{\mathrm{nl}} = s_{\mathrm{nl} - 1} + \dot{s}_t h_{\mathrm{nl} - 1},
+  $$
+  which gives the diagonal coefficient and right-hand-side
+  $$
+  b_{\mathrm{nl} - 1} = h_{\mathrm{nl} - 1}^{n + 1}
+  - a_{\mathrm{nl} - 1}
+  $$
+  $$
+  \mathrm{rhs}_{\mathrm{nl} - 1} = 
+  (hs)_{\mathrm{nl} - 1}^{\star} + D \Delta t \dot{s}_t
+  $$
+  */
+
+  double den_t = h[0,0,nl-1]*sq(h[] + h[0,0,nl-2]) 
+    + 2.*lambda_t*(3.*h[0,0,nl-1]*h[0,0,nl-2] + 2.*sq(h[0,0,nl-1]) + sq(h[0,0,nl-2]));
+
+  a[nl-1] = + 2.*dt*D*(1./(h[0,0,nl-1] + h[0,0,nl-2]) + sq(h[0,0,nl-1])/den_t);
+  b[nl-1] = h[] - 2.*dt*D*(1./(h[0,0,nl-1] + h[0,0,nl-2]) +
+			  (sq(h[0,0,nl-2]) + 3.*h[0,0,nl-1]*h[0,0,nl-2] + 3.*sq(h[0,0,nl-1]))/den_t);
+  rhs[nl-1] -= 2.*dt*D*s_t*(sq(h[0,0,nl-2]) + 3.*h[0,0,nl-1]*h[0,0,nl-2] + 2.*sq(h[0,0,nl-1]))/den_t;
+
+  //fprintf(stderr,"%g\n",lambda_b);
+
+  /**
+  For the bottom layer a third-order discretisation of the Navier slip
+  condition gives
+  $$
+  \begin{aligned}
+  b_0 & = h_0 + 2 \Delta t D \left( \frac{1}{h_0 + h_1} + \frac{h^2_1 + 3
+  h_0 h_1 + 3 h^2_0}{\det} \right),\\
+  c_0 & = - 2 \Delta t D \left( \frac{1}{h_0 + h_1} + \frac{h^2_0}{\det}
+  \right),\\
+  \text{rhs}_0 & = (hs_0)^{\star} + 2 \Delta t D s_b  \frac{h^2_1 + 3 h_0
+  h_1 + 2 h^2_0}{\det},\\
+  \det & = h_0 (h_0 + h_1)^2  + 2\lambda (3\,h_0 h_1 + 2\,h_0^2 + h_1^2),
+  \end{aligned}
+  $$
+  */
+
+  double den = h[]*sq(h[] + h[0,0,1]) 
+    + 2.*lambda_b*(3.*h[]*h[0,0,1] + 2.*sq(h[]) + sq(h[0,0,1]));
+  b[0] = h[] + 2.*dt*D*(1./(h[] + h[0,0,1]) +
+			  (sq(h[0,0,1]) + 3.*h[]*h[0,0,1] + 3.*sq(h[]))/den);
+  c[0] = - 2.*dt*D*(1./(h[] + h[0,0,1]) + sq(h[])/den);
+  rhs[0] += 2.*dt*D*s_b*(sq(h[0,0,1]) + 3.*h[]*h[0,0,1] + 2.*sq(h[0]))/den;
+  
+  /**
+  if (nl == 1) {
+    b[0] += c[0];
+    rhs[0] += (- c[0]*h[] - D*dt) * dst;
+  }
+  */
+    
+  /**
+  We can now solve the tridiagonal system using the [Thomas
+  algorithm](https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm). */
+  
+  for (int l = 1; l < nl; l++) {
+    b[l] -= a[l]*c[l-1]/b[l-1];
+    rhs[l] -= a[l]*rhs[l-1]/b[l-1];
+  }
+  a[nl-1] = rhs[nl-1]/b[nl-1];
+  s[0,0,nl-1] = a[nl-1];
+  for (int l = nl - 2; l >= 0; l--)
+    s[0,0,l] = a[l] = (rhs[l] - c[l]*a[l+1])/b[l];
+}
+
+
+
 /**
 ## Horizontal diffusion
 
@@ -247,7 +351,7 @@ time discretisation is explicit so that the timestep must be limited
 (manually) by $\min(\Delta^2/D)$. */
 
 
-void horizontal_diffusion (scalar s, double D, double dt, scalar dst)
+void horizontal_diffusion_Neumann (scalar s, double D, double dt, scalar dst)
 {
   if (D > 0.) {
     scalar d2s[];
@@ -296,6 +400,54 @@ void horizontal_diffusion (scalar s, double D, double dt, scalar dst)
       foreach()
 	if (h[] > dry) 
 	    s[] += dt*D*d2s[];
+    for (int l = 0; l < nl; l++) 
+      foreach()
+	if (h[0,0,l] > dry)
+	  s[0,0,l] += dt*D*d2sz[0,0,l]/h[0,0,l];
+  }
+}
+
+void horizontal_diffusion_Navier (scalar s, double D, double dt, scalar st)
+{
+  if (D > 0.) {
+    scalar d2s[];
+    foreach_layer() {
+      foreach() {
+	double a = 0.;
+	foreach_dimension(){
+	  a += (h[-1]*s[-1] -2.*h[]*s[] + h[1]*s[1]);
+	}
+	d2s[] = a/(sq(Delta));
+      }
+    }
+
+
+    scalar zl[];
+    foreach()
+      zl[]=zb[];
+    scalar d2sz[];
+    for (int l = 0; l < nl; l++) {
+      foreach(){
+	double b = 0;
+	foreach_dimension(){
+	  if (l > 0){
+	    b += 2.*(((s[1,0,l-1]+s[1,0,l])/2.)-((s[-1,0,l-1]+s[-1,0,l])/2.))/2.*(zl[1]-zl[-1])/2. +(s[0,0,l-1]+s[0,0,l])/2.*(zl[-1]-2.*zl[]+zl[1]);
+	  }
+	  if (l < nl-1){
+	    b -= 2.*(((s[1,0,l+1]+s[1,0,l])/2.)-((s[-1,0,l+1]+s[-1,0,l])/2.))/2.*((zl[1]+h[1,0,l])-(zl[-1]+h[-1,0,l]))/2. +(s[0,0,l+1]+s[0,0,l])/2.*((zl[-1]+h[-1,0,l])-2.*(zl[0]+h[0,0,l])+(zl[1]+h[1,0,l]));
+	  }
+	  else
+	    b -= 2.*(st[1,0]-st[-1,0])/2.*((zl[1]+h[1,0,l])-(zl[-1]+h[-1,0,l]))/2. +st[]*((zl[-1]+h[-1,0,l])-2.*(zl[0]+h[0,0,l])+(zl[1]+h[1,0,l]));
+	}
+	d2sz[0,0,l]= b/sq(Delta);
+      }
+      foreach()
+	zl[]+=h[0,0,l];
+    } 
+    foreach_layer() 
+      foreach()
+	if (h[] > dry) 
+	    s[] += dt*D*d2s[]/h[];
     for (int l = 0; l < nl; l++) 
       foreach()
 	if (h[0,0,l] > dry)
@@ -394,10 +546,10 @@ event viscous_term (i++,last)
 	foreach_dimension()
 	  u.x[] += dt*(ha.x[] + ha.x[1])/(hf.x[] + hf.x[1] + dry);
       foreach_dimension()
-	//vertical_diffusion_NeumanNeuman (point, h, u.x, dt, nu,
-      	//	    dut.x[], dub.x[]);
-	vertical_diffusion_NeumanNavier (point, h, u.x, dt, nu,
-        				 dut.x[], u_b.x[], dub.x[]);
+	vertical_diffusion_NeumanNeuman (point, h, u.x, dt, nu,
+					 dut.x[], dub.x[]);
+      //vertical_diffusion_NeumanNavier (point, h, u.x, dt, nu,
+      //				 dut.x[], u_b.x[], dub.x[]);
     }
     if (h_diffusion){
       vector dup[];
@@ -405,7 +557,7 @@ event viscous_term (i++,last)
 	foreach_dimension()
 	dup.x[]=dut.x[];
       foreach_dimension()
-    	horizontal_diffusion (u.x, nu, dt, dup.x);
+      	horizontal_diffusion_Neumann (u.x, nu, dt, dup.x);
     }
     foreach() {
       foreach_layer()

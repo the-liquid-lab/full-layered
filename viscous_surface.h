@@ -94,8 +94,8 @@ The viscous contribution is added as a boundary condition in the
  contain this condition.
 */
 
-#if NH
 vector du_nu[];
+#if NH
 /**
 event viscous_term (i++) 
 {
@@ -130,19 +130,39 @@ event viscous_term (i++)
     double etax=0;
     double maxdiff=1.;
     int iter=0;
+
+    scalar wt[];
+    scalar eta_star[];
     
     foreach()
       foreach_dimension ()
         du_nu.x[]=0;
+
+    foreach(){
+      eta_star[] = 0; 
+      foreach_layer(){
+	eta_star[]+=h[];
+      }
+    }
+    
     while(iter<10){
       maxdiff=0.;
+     
+      foreach(){
+	wt[]=(w[0,0,nl-1]+w[0,0,nl-2])/2.;
+	foreach_dimension(){
+	  wt[] -= (u.x[1,0,nl-1]*h[1,0,nl-1]-u.x[-1,0,nl-1]*h[-1,0,nl-1])/(2.*Delta);
+	  wt[] += (u.x[0,0,nl-1]+ h[0,0,nl-1]/2*du_nu.x[0,0])*(eta_star[1,0]-eta_star[-1,0])/(2.*Delta);
+	  wt[] -= (u.x[0,0,nl-1]+u.x[0,0,nl-2])/2.*(eta_star[1,0]-h[1,0,nl-1]-eta_star[-1,0]+h[-1,0,nl-1])/(2.*Delta);
+	}
+      }
       foreach()
 	foreach_dimension ()
 	{
-	  etax=(eta[1]-eta[-1])/(2.*Delta);
-	  du_nu.x[] = - (w[1,0,nl-1] - w[-1,0,nl-1])/(2.*Delta) + 4.*(u.x[1,0,nl-1] - u.x[-1,0,nl-1])/(2.*Delta)*etax/(1.-etax*etax)+
-	    (h[1,0,nl-1]*u.x[1,0,nl-1]-(h[1,0,nl-1]+h[0,0,nl-1])*u.x[0,0,nl-1]+h[0,0,nl-1]*u.x[-1,0,nl-1])/(2.*sq(Delta))+
-	    tstress_a(h,eta,0)*du_nu.x[1] + tstress_c(h,eta,0)*du_nu.x[-1]-tstress_b(h,eta,0)*du_nu.x[];
+	  etax=(eta_star[1]-eta_star[-1])/(2.*Delta);
+	  du_nu.x[] = - (wt[1,0,nl-1] - wt[-1,0,nl-1])/(2.*Delta) + 4.*(u.x[1,0,nl-1] - u.x[-1,0,nl-1])/(2.*Delta)*etax/(1.-etax*etax);
+	    //(h[1,0,nl-1]*u.x[1,0,nl-1]-(h[1,0,nl-1]+h[0,0,nl-1])*u.x[0,0,nl-1]+h[0,0,nl-1]*u.x[-1,0,nl-1])/(2.*sq(Delta))+
+	    //tstress_a(h,eta,0)*du_nu.x[1] + tstress_c(h,eta,0)*du_nu.x[-1]-tstress_b(h,eta,0)*du_nu.x[];
 	    //if (fabs((du_nu.x[]-du_nu_tmp.x[])/(du_nu.x[]+1E-12))>maxdiff)
 	    // maxdiff= fabs((du_nu.x[]-du_nu_tmp.x[])/(du_nu.x[]+1E-12));
 	  //fprintf(stdout,"%g ",maxdiff);
@@ -154,5 +174,50 @@ event viscous_term (i++)
   }
 }
 
+
+#else
+
+
+# define tstress_a(h, eta, i)					\
+  ((1./4.)*sq(h[i+1,0,nl-1])/sq(Delta)+((eta[i+1]-eta[i-1])/(2.*Delta))/(1.-sq((eta[i+1]-eta[i-1])/(2.*Delta)))*h[i+1,0,nl-1]/Delta)
+
+# define tstress_b(h, eta, i)						\
+  ((1./4.)*h[i+1,0,nl-1]*h[i,0,nl-1]/sq(Delta))
+
+# define tstress_c(h, eta, i)					\
+  ((1./4.)*h[i,0,nl-1]*h[i-1,0,nl-1]/sq(Delta)-((eta[i+1]-eta[i-1])/(2.*Delta))/(1.-sq((eta[i+1]-eta[i-1])/(2.*Delta)))*h[i-1,0,nl-1]/Delta)
+
+event viscous_term (i++) 
+{
+  if (visc_activate){
+    double etax=0;
+    double maxdiff=1.;
+    int iter=0;
+
+    scalar QED[];
+    vertical_velocity(QED,hu,hf);
+    
+    foreach()
+      foreach_dimension ()
+      du_nu.x[]=0;
+    while(iter<10){
+      maxdiff=0.;
+      foreach()
+	foreach_dimension ()
+	{
+	  etax=(eta[1]-eta[-1])/(2.*Delta);
+	  du_nu.x[] =  -(QED[1,0,nl-1]-QED[-1,0,nl-1])/(2.*Delta)  + 4.*(u.x[1,0,nl-1] - u.x[-1,0,nl-1])/(2.*Delta)*etax/(1.-etax*etax);
+	    //(h[1,0,nl-1]*u.x[1,0,nl-1]-(h[1,0,nl-1]+h[0,0,nl-1])*u.x[0,0,nl-1]+h[0,0,nl-1]*u.x[-1,0,nl-1])/(2.*sq(Delta))+
+	    //tstress_a(h,eta,0)*du_nu.x[1] + tstress_c(h,eta,0)*du_nu.x[-1]-tstress_b(h,eta,0)*du_nu.x[];
+	    //if (fabs((du_nu.x[]-du_nu_tmp.x[])/(du_nu.x[]+1E-12))>maxdiff)
+	    // maxdiff= fabs((du_nu.x[]-du_nu_tmp.x[])/(du_nu.x[]+1E-12));
+	  //fprintf(stdout,"%g ",maxdiff);
+	}
+      iter=10;
+    }
+    boundary ((scalar *){du_nu});
+    dut = du_nu;
+  }
+}
 
 #endif

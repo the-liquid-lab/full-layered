@@ -79,16 +79,34 @@ event viscous_term (i++)
 {
   if (nu > 0.){
     scalar dwt[];
+    scalar wt[];
+    scalar eta_star[];
+    
+    foreach(){
+      eta_star[] = 0; 
+      foreach_layer(){
+	eta_star[]+=h[];
+      }
+    }
     foreach(){
       dwt[]=0;
+      wt[]=(w[0,0,nl-1]+w[0,0,nl-2])/2.;
       foreach_dimension(){
-	dwt[] -= (u.x[1,0,nl-1] - u.x[1,0,nl-1] + h[1,0,nl-1]/2*dut.x[1,0] - h[-1,0,nl-1]/2*dut.x[-1,0])/(2.*Delta);
+      	dwt[] -= (u.x[1,0,nl-1] - u.x[1,0,nl-1] + h[1,0,nl-1]/2*dut.x[1,0] - h[-1,0,nl-1]/2*dut.x[-1,0])/(2.*Delta);
+	wt[] -= (u.x[1,0,nl-1]*h[1,0,nl-1]-u.x[-1,0,nl-1]*h[-1,0,nl-1])/(2.*Delta);
+	wt[] += (u.x[0,0,nl-1]+ h[0,0,nl-1]/2*dut.x[0,0])*(eta_star[1,0]-eta_star[-1,0])/(2.*Delta);
+	wt[] -= (u.x[0,0,nl-1]+u.x[0,0,nl-2])/2.*(eta_star[1,0]-h[1,0,nl-1]-eta_star[-1,0]+h[-1,0,nl-1])/(2.*Delta);
       }
-      vertical_diffusion_NeumanNavier (point, h, w, dt, nu, dwt[], 0., 0.);
+      //fprintf(stderr,"%g\n",wt[]);
+      //vertical_diffusion_NeumanNavier (point, h, w, dt, nu, dwt[], 0., 0.);
+      vertical_diffusion_NavierNavier (point, h, w, dt, nu, wt[], 0., 0., 0.);
+      
+      //vertical_diffusion_NeumanNeuman (point, h, w, dt, nu,dwt[], dwt[]);
       //vertical_diffusion (point, h, w, dt, nu, 0., 0., 0.);
     }
     if (h_diffusion)
-      horizontal_diffusion ( w, nu, dt,dwt);
+      horizontal_diffusion_Navier ( w, nu, dt,wt);
+    //horizontal_diffusion_Neumann ( w, nu, dt,dwt);
   }
 }
 
